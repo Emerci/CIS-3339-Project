@@ -154,98 +154,102 @@
   </main>
 </template>
 
-<script>
+<script setup>
+// MIGRATION (Sprint 2): Converted from Options API (data/setup/validations/mounted/methods) to Composition API <script setup>
+import { ref, reactive, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 // import vuelidate validations
 import useVuelidate from '@vuelidate/core'
 import { required } from '@vuelidate/validators'
 import { getServices, createEvent } from '../api/api'
 import { useToast } from 'vue-toastification'
 
-//Notifications
+// Notifications
 const toast = useToast()
 
-export default {
-  data() {
-    return {
-      // event variable to hold new event information
-      event: {
-        name: null,
-        description: null,
-        date: null,
-        services: [],
-        address: {
-          line1: null,
-          line2: null,
-          city: null,
-          county: null,
-          zip: null
-        },
-        attendees: [],
-      },
-      //variable to assign service IDs to event (user clicks checkboxes to add services to event)
-      activeServices: [],
-      // variable that determines which services in the List of Services checkboxes have expanded details
-      openDescriptions: [],
-    }
-  },
-  setup() {
-    // Register Vuelidate
-    const v$ = useVuelidate();
-    return { v$ };
-  },
-  validations() {
-    // validations
-    const validDate = (value) => {
-      const date = new Date(value)
-      return !isNaN(date)
-    }
+// MIGRATION: this.$router -> useRouter()
+const router = useRouter()
 
-    // prevents form submission if new event has a date before the current date
-    const notBeforeToday = (value) => {
-      const today = new Date()
-      return value >= today.toISOString().split('T')[0]
-    }
-
-    return {
-      event: {
-        name: { required },
-        date: {
-          required,
-          validDate,
-          notBeforeToday
-        },
-      }
-    }
+// MIGRATION: data() { event } -> reactive() object (nested fields stay reactive for v-model)
+// event variable to hold new event information
+const event = reactive({
+  name: null,
+  description: null,
+  date: null,
+  services: [],
+  address: {
+    line1: null,
+    line2: null,
+    city: null,
+    county: null,
+    zip: null
   },
-  async mounted() {
-    // when component is mounted, data is loaded
-    try {
-        const response = await getServices();
-        this.activeServices = response.filter(item => item.status === "Active")
-      } catch (error) {
-        toast.error(error.message)
-      }
-  },
-  methods: {
-    // method called when user tries to create new event
-    async handleSubmitForm() {
-      // Trigger validation
-      this.v$.$validate();
+  attendees: []
+})
 
-      if (this.v$.$error) {
-        toast.error('Please fix input field errors')
-        // Form is invalid, do not proceed
-        return;
-      }
+// MIGRATION: data() { activeServices } -> ref()
+// variable to assign service IDs to event (user clicks checkboxes to add services to event)
+const activeServices = ref([])
+// MIGRATION: removed openDescriptions - it was declared in data() but never used in the template or methods
 
-      try {
-        const response = await createEvent(this.event);
-        this.$router.push('/findevents')
-        toast.success(response)
-      } catch (error) {
-        toast.error(error.message || 'error creating new event:')
-      }
-    },
-  },
+// MIGRATION: custom validators moved out of validations() to top-level functions
+// checks that the value is a real date
+const validDate = (value) => {
+  const date = new Date(value)
+  return !isNaN(date)
 }
+
+// prevents form submission if new event has a date before the current date
+const notBeforeToday = (value) => {
+  const today = new Date()
+  return value >= today.toISOString().split('T')[0]
+}
+
+// MIGRATION: validations() -> plain rules object
+const rules = {
+  event: {
+    name: { required },
+    date: {
+      required,
+      validDate,
+      notBeforeToday
+    }
+  }
+}
+
+// MIGRATION: setup() { useVuelidate() } -> useVuelidate(rules, state)
+// Without data()/validations(), Vuelidate needs the rules and state passed in explicitly
+const v$ = useVuelidate(rules, { event })
+
+// MIGRATION: methods: { handleSubmitForm } -> plain async function
+// method called when user tries to create new event
+async function handleSubmitForm() {
+  // MIGRATION: this.v$.$validate() -> await v$.value.$validate()
+  // Trigger validation and stop if the form is invalid
+  const isValid = await v$.value.$validate()
+  if (!isValid) {
+    toast.error('Please fix input field errors')
+    return
+  }
+
+  try {
+    // MIGRATION: this.event -> event, this.$router -> router
+    const response = await createEvent(event)
+    router.push('/findevents')
+    toast.success(response)
+  } catch (error) {
+    toast.error(error.message || 'Error creating new event')
+  }
+}
+
+// MIGRATION: async mounted() -> onMounted(async () => ...)
+// when component is mounted, load the active services for the checkbox list
+onMounted(async () => {
+  try {
+    const response = await getServices()
+    activeServices.value = response.filter((item) => item.status === 'Active')
+  } catch (error) {
+    toast.error(error.message)
+  }
+})
 </script>
