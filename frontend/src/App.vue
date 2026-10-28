@@ -5,7 +5,8 @@
     <div id="_container" class="min-h-screen">
       <header class="w-full">
         <section class="text-center">
-          <img class="m-auto" src="@\assets\DanPersona.svg" />
+          <!-- MIGRATION: changed backslashes to forward slashes so the path works on Mac/Linux, and added alt text -->
+          <img class="m-auto" src="@/assets/DanPersona.svg" alt="User avatar" />
         </section>
         <!--Navigation bar-->
         <nav class="mt-10">
@@ -89,42 +90,41 @@
   </main>
 </template>
 
-<script>
+<script setup>
+// MIGRATION (Sprint 2): Converted from Options API (setup/data/created/methods) to Composition API <script setup>
+import { ref } from 'vue'
 import { useLoggedInUserStore } from './store/loggedInUser'
 import { getOrgName } from './api/api'
 import { useToast } from 'vue-toastification'
 
-//Notifications
+// Notifications
 const toast = useToast()
 
-export default {
-  setup() {
-    const user = useLoggedInUserStore();
-    return { user };
-  },
-  data() {
-    return {
-      orgName: "Dataplatform",
-    };
-  },
-  async created() {
-    try {
-      this.orgName = await getOrgName();
-    } catch {
-      throw (error)
-    }
-  },
-  methods: {
-    logout() {
-      try {
-        this.$store.dispatch('clearSessionData');
-        this.$router.push('/')
-      } catch (error) {
-        toast.error(error.message || 'logout error')
-      }
-    },
+// MIGRATION: user store was returned from setup(); now just a top-level const
+const user = useLoggedInUserStore()
+
+// MIGRATION: data() { orgName } -> ref()
+// shows "Dataplatform" until the real organization name loads
+const orgName = ref('Dataplatform')
+
+// MIGRATION: async created() -> a plain async function called directly in <script setup>
+// (code at the top level of <script setup> runs at the same time created() used to)
+async function loadOrgName() {
+  try {
+    orgName.value = await getOrgName()
+  } catch (error) {
+    // MIGRATION: the old code was "catch { throw (error) }" - error was never declared,
+    // so it threw a ReferenceError and hid the real problem.
+    // Now the real error goes to the console and the user sees a readable message.
+    console.error('Failed to load organization name:', error)
+    toast.error(error.message || 'Could not load organization name')
   }
 }
+loadOrgName()
+
+// MIGRATION: removed the old logout() method - it called this.$store.dispatch(), which is Vuex,
+// but this project uses Pinia, so it would have crashed. It was also never used:
+// the Logout link in the template calls user.logout from the Pinia store directly.
 </script>
 
 <style scoped>
