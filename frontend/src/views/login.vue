@@ -31,22 +31,17 @@
     </div>
 </template>
 
-<script>
-  import { useLoggedInUserStore } from "../store/loggedInUser";
+<script setup>
+// MIGRATION (Sprint 2): Converted from Options API (data() + setup()) to Composition API <script setup>
+import { ref } from 'vue'
+import { useLoggedInUserStore } from '../store/loggedInUser'
 
-  export default {
-    data() {
-      return {
-        username: "",
-        password: "",
-      }
-    },
-    setup() {
-      const store = useLoggedInUserStore();
-      return {
-        store
-      }
-    }
-  }
+// MIGRATION: data() { username, password } -> ref()
+// v-model in the template binds to these refs directly (no .value needed in the template)
+const username = ref('')
+const password = ref('')
+
+// MIGRATION: The old setup() block returned the store manually.
+// With <script setup>, top-level variables are available to the template automatically.
+const store = useLoggedInUserStore()
 </script>
-
