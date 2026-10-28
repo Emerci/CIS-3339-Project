@@ -4,45 +4,79 @@
   </div>
 </template>
 
-<script>
+<script setup>
+// MIGRATION (Sprint 2): Converted from Options API (props/mounted) to Composition API <script setup>
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { Chart, registerables } from 'chart.js'
+
 Chart.register(...registerables)
-//define props (label and chartData)
-export default {
-  props: {
-    label: {
-      type: Array
+
+// MIGRATION: props: { label, chartData } -> defineProps()
+const props = defineProps({
+  label: {
+    type: Array
+  },
+  chartData: {
+    type: Array
+  }
+})
+
+// MIGRATION: this.$refs.zipChart -> template ref with the same name as ref="zipChart"
+const zipChart = ref(null)
+
+// Holds the Chart.js instance so it can be updated and destroyed later
+// (plain variable, not ref - Chart.js objects should not be made reactive)
+let chart = null
+
+// MIGRATION: async mounted() -> onMounted()
+// MIGRATION: removed "await" - new Chart() is not a promise, so awaiting it did nothing
+// uses the data to load the chart's values
+onMounted(() => {
+  chart = new Chart(zipChart.value, {
+    type: 'doughnut',
+    data: {
+      labels: props.label,
+      datasets: [
+        {
+          borderWidth: 1,
+          data: props.chartData
+        }
+      ]
     },
-    chartData: {
-      type: Array
-    }
-  },
-  async mounted() { //uses the data to load the chart's values
-    await new Chart(this.$refs.zipChart, {
-      type: 'doughnut',
-      data: {
-        labels: this.label,
-        datasets: [
-          {
-            borderWidth: 1,
-            data: this.chartData // Update this line
-          }
-        ]
-      },
-      options: {
-        plugins: {
-          legend: {
-            display: false
-          },
-          title: {
-            display: true,
-            text: 'Clients by Zip Code'
-          }
+    options: {
+      plugins: {
+        legend: {
+          display: false
         },
-        responsive: true,
-        maintainAspectRatio: true
-      }
-    })
-  },
-}
+        title: {
+          display: true,
+          text: 'Clients by Zip Code'
+        }
+      },
+      responsive: true,
+      maintainAspectRatio: true
+    }
+  })
+})
+
+// MIGRATION: added watch() - the Options API version never reacted to prop changes,
+// so the chart went stale if the data changed. Now it redraws with the new data.
+watch(
+  () => [props.label, props.chartData],
+  ([newLabels, newData]) => {
+    if (!chart) return
+    chart.data.labels = newLabels
+    chart.data.datasets[0].data = newData
+    chart.update()
+  }
+)
+
+// MIGRATION: added onBeforeUnmount() - the Options API version never destroyed the chart,
+// which leaked the canvas and its event listeners every time you left the page
+onBeforeUnmount(() => {
+  if (chart) {
+    chart.destroy()
+    chart = null
+  }
+})
 </script>
