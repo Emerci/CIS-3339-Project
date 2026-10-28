@@ -175,86 +175,81 @@
   </main>
 </template>
 
-<script>
-//import functionalities for validation
+<script setup>
+// MIGRATION (Sprint 2): Converted from Options API (data/setup/validations/methods) to Composition API <script setup>
+import { reactive } from 'vue'
+import { useRouter } from 'vue-router'
+// import functionalities for validation
 import useVuelidate from '@vuelidate/core'
 import { required, email, numeric, minLength, maxLength } from '@vuelidate/validators'
 import { createClient } from '../api/api'
 import { useToast } from 'vue-toastification'
 
-//Notifications
+// Notifications
 const toast = useToast()
 
-export default {
-  data() {
-    return {
-      //client variable to hold new client information
-      client: {
-        firstName: null,
-        middleName: null,
-        lastName: null,
-        email: null,
-        phoneNumber: {
-          primary: null,
-          alternate: null
-        },
-        address: {
-          line1: null,
-          line2: null,
-          city: null,
-          county: null,
-          zip: null
-        },
-      }
-    }
-  },
-  setup() {
-    // Register Vuelidate
-    const v$ = useVuelidate();
-    return { v$ };
-  },
-  validations() {
-    // validations for client
-    return {
-      client: {
-        firstName: { required },
-        lastName: { required },
-        email: { required, email },
-        phoneNumber: {
-          primary: {
-            required,
-            numeric,
-            minLength: minLength(10),
-            maxLength: maxLength(10),
-          },
-        },
-        address: {
-          city: { required },
-        },
-      },
-    };
-  },
-  methods: {
-    // method called when user submits the form
-    async submitForm() {
-      // Trigger validation
-      this.v$.$validate();
+// MIGRATION: this.$router -> useRouter()
+const router = useRouter()
 
-      if (this.v$.$error) {
-        // Form is invalid, do not proceed
-        return;
-      }
+// MIGRATION: data() { client } -> reactive() object
+// reactive() keeps the nested phoneNumber/address fields reactive for v-model
+const client = reactive({
+  firstName: null,
+  middleName: null,
+  lastName: null,
+  email: null,
+  phoneNumber: {
+    primary: null,
+    alternate: null
+  },
+  address: {
+    line1: null,
+    line2: null,
+    city: null,
+    county: null,
+    zip: null
+  }
+})
 
-      try {
-        const response = await createClient(this.client);
-        this.$router.push('/findclient')
-        toast.success(response)
-      } catch (error) {
-        toast.error(error.message)
+// MIGRATION: validations() -> plain rules object
+const rules = {
+  client: {
+    firstName: { required },
+    lastName: { required },
+    email: { required, email },
+    phoneNumber: {
+      primary: {
+        required,
+        numeric,
+        minLength: minLength(10),
+        maxLength: maxLength(10)
       }
     },
+    address: {
+      city: { required }
+    }
+  }
+}
+
+// MIGRATION: setup() { useVuelidate() } -> useVuelidate(rules, state)
+// Without data()/validations(), Vuelidate needs the rules and state passed in explicitly
+const v$ = useVuelidate(rules, { client })
+
+// MIGRATION: methods: { submitForm } -> plain async function
+// method called when user submits the form
+async function submitForm() {
+  // MIGRATION: this.v$.$validate() -> await v$.value.$validate()
+  // Trigger validation and stop if the form is invalid
+  const isValid = await v$.value.$validate()
+  if (!isValid) return
+
+  try {
+    // MIGRATION: this.client -> client, this.$router -> router
+    const response = await createClient(client)
+    router.push('/findclient')
+    toast.success(response)
+  } catch (error) {
+    toast.error(error.message)
   }
 }
 </script>
-
-
