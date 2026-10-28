@@ -167,7 +167,7 @@ export default {
       this.events = eventsResponse;
 
     } catch (error) {
-      toast.error(error);
+      toast.error(error.message);
     }
   },
   methods: {
@@ -195,7 +195,7 @@ export default {
         this.$router.push('/findservice')
         toast.success(response)
       } catch (error) {
-        toast.error('error updating service', error)
+        toast.error(error.message || 'error updating service')
       }
     },
 
@@ -211,7 +211,7 @@ export default {
         toast.success(response)
         this.$router.push('/findservice')
       } catch (error) {
-        toast.error(error)
+        toast.error(error.message)
       }
     },
   }

@@ -35,6 +35,14 @@ export const useLoggedInUserStore = defineStore({
         toast.error(error.message)
       }
     },
+    // Called by the Axios interceptor on a 401 (api/api.js already removed the token)
+    expireSession() {
+      this.$patch({ name: "", role: "", isLoggedIn: false });
+      if (this.$router.currentRoute.value.path !== '/login') {
+        this.$router.push('/login');
+        toast.error('Your session has expired. Please log in again.');
+      }
+    },
     logout() {
       logoutUser();
       // Reset value after user log out

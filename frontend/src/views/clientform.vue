@@ -250,7 +250,7 @@ export default {
         this.$router.push('/findclient')
         toast.success(response)
       } catch (error) {
-        toast.error(error)
+        toast.error(error.message)
       }
     },
   }
