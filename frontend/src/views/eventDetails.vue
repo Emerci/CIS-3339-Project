@@ -149,7 +149,7 @@
           <!--Go back button-->
         </div>
         <div class="flex justify-between mt-10 mr-20">
-          <button type="reset" class="border border-red-700 bg-white text-red-700 rounded" @click=this.$router.back()>
+          <button type="reset" class="border border-red-700 bg-white text-red-700 rounded" @click="goBack">
             Go back
           </button>
         </div>
@@ -194,121 +194,131 @@
   </main>
 </template>
 
-<script>
-//import vuelidate functionalities
+<script setup>
+// MIGRATION (Sprint 2): Converted from Options API (data/setup/validations/mounted/methods) to Composition API <script setup>
+import { ref, reactive, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+// import vuelidate functionalities
 import useVuelidate from '@vuelidate/core'
 import { required } from '@vuelidate/validators'
-import { useLoggedInUserStore } from "../store/loggedInUser";
+import { useLoggedInUserStore } from '../store/loggedInUser'
 import { getEventById, getEventAttendees, getServices, updateEvent, deleteEvent } from '../api/api'
 import { useToast } from 'vue-toastification'
 
-//Notifications
+// Notifications
 const toast = useToast()
 
-export default {
-  data() {
-    return {
-      //variable to hold clients for selected event
-      clients: [],
-      //variable to hold services for selected event
-      services: [],
-      //variable to hold event information
-      event: {
-        name: null,
-        description: null,
-        date: null,
-        address: {
-          line1: null,
-          line2: null,
-          city: null,
-          county: null,
-          zip: null
-        },
-        attendees: [],
-        services: []
-      },
-      // variable stores the ID of the row that the mouse is currently hovering over (to highlight the row red)
-      hoverId: null,
-    }
+// MIGRATION: this.$route / this.$router -> useRoute() / useRouter()
+const route = useRoute()
+const router = useRouter()
+
+// MIGRATION: user store was returned from setup(); now just a top-level const
+const user = useLoggedInUserStore()
+
+// MIGRATION: data() { clients, services, hoverId } -> ref()
+// variable to hold clients for selected event
+const clients = ref([])
+// variable to hold services for selected event
+const services = ref([])
+// variable stores the ID of the row that the mouse is currently hovering over (to highlight the row red)
+const hoverId = ref(null)
+
+// MIGRATION: data() { event } -> reactive() object (nested fields stay reactive for v-model)
+// variable to hold event information
+const event = reactive({
+  name: null,
+  description: null,
+  date: null,
+  address: {
+    line1: null,
+    line2: null,
+    city: null,
+    county: null,
+    zip: null
   },
-  setup() {
-    // register Vuelidate and loggedIn store
-    const v$ = useVuelidate();
-    const user = useLoggedInUserStore();
-    return { v$, user };
-  },
-  validations() {
-    // validations
-    const validDate = (value) => {
-      const date = new Date(value)
-      return !isNaN(date)
+  attendees: [],
+  services: []
+})
+
+// MIGRATION: custom validator moved out of validations() to a top-level function
+// checks that the value is a real date
+const validDate = (value) => {
+  const date = new Date(value)
+  return !isNaN(date)
+}
+
+// MIGRATION: validations() -> plain rules object, passed to useVuelidate with the state
+const rules = {
+  event: {
+    name: { required },
+    date: {
+      required,
+      validDate
     }
-
-    return {
-      event: {
-        name: { required },
-        date: {
-          required,
-          validDate
-        },
-      }
-    }
-  },
-  async mounted() {
-    // when component is mounted, data is loaded
-    try {
-      const [eventResponse, clientsResponse, servicesResponse] = await Promise.all([
-        getEventById(this.$route.params.id),
-        getEventAttendees(this.$route.params.id),
-        getServices(),
-      ]);
-
-      eventResponse.date = new Date(eventResponse.date).toISOString().substring(0, 10);
-
-      this.event = eventResponse;
-      this.clients = clientsResponse;
-      this.services = servicesResponse;
-     // this.inactiveServices = servicesResponse.filter(item => item.status === "Inactive")
-
-    } catch (error) {
-      toast.error(error.message || 'error loading data')
-    }
-  },
-  methods: {
-    // method called when user attempts to update the event -> asks for confirmation
-    async submitEventUpdate() {
-      // Trigger validation
-      this.v$.$validate();
-
-      if (this.v$.$error) {
-        // Form is invalid, do not proceed
-        return;
-      }
-
-      try {
-        const response = await updateEvent(this.$route.params.id, this.event);
-        toast.success(response)
-        this.$router.push('/findevents')
-      } catch (error) {
-        toast.error(error.message || 'error updating event')
-      }
-    },
-
-    // method to make the API call to delete the event - can only be deleted if no attendees are in event
-    async submitDeleteEvent() {
-      try {
-        if (this.event.attendees != 0)
-        {
-          toast.info('Event can not be deleted since it has attendees.')
-          return
-        }
-        const response = await deleteEvent(this.$route.params.id);
-        toast.success(response)
-        this.$router.push('/findevents')
-      } catch (error) {
-        toast.error(error.message)
-      }
-    },
   }
 }
+const v$ = useVuelidate(rules, { event })
+
+// MIGRATION: methods: { submitEventUpdate } -> plain async function
+// method called when user attempts to update the event
+async function submitEventUpdate() {
+  // Trigger validation and stop if the form is invalid
+  const isValid = await v$.value.$validate()
+  if (!isValid) return
+
+  try {
+    // MIGRATION: this.$route.params.id -> route.params.id, this.event -> event
+    const response = await updateEvent(route.params.id, event)
+    toast.success(response)
+    router.push('/findevents')
+  } catch (error) {
+    toast.error(error.message || 'Error updating event')
+  }
+}
+
+// MIGRATION: methods: { submitDeleteEvent } -> plain async function
+// method to make the API call to delete the event - can only be deleted if no attendees are in event
+async function submitDeleteEvent() {
+  try {
+    // MIGRATION: "this.event.attendees != 0" compared an array to 0; checking .length is the clear version
+    if (event.attendees.length !== 0) {
+      toast.info('Event can not be deleted since it has attendees.')
+      return
+    }
+    const response = await deleteEvent(route.params.id)
+    toast.success(response)
+    router.push('/findevents')
+  } catch (error) {
+    toast.error(error.message)
+  }
+}
+
+// MIGRATION: the template used @click=this.$router.back(), but "this" does not exist
+// in a <script setup> template, so the Go back button now calls this function instead
+function goBack() {
+  router.back()
+}
+
+// MIGRATION: async mounted() -> onMounted(async () => ...)
+// when component is mounted, load the event, its attendees, and all services
+onMounted(async () => {
+  try {
+    const [eventResponse, clientsResponse, servicesResponse] = await Promise.all([
+      getEventById(route.params.id),
+      getEventAttendees(route.params.id),
+      getServices()
+    ])
+
+    // format the date as YYYY-MM-DD so the date input can display it
+    eventResponse.date = new Date(eventResponse.date).toISOString().substring(0, 10)
+
+    // MIGRATION: this.event = eventResponse would replace the reactive object and break reactivity,
+    // so Object.assign copies the loaded fields into the existing reactive event instead
+    Object.assign(event, eventResponse)
+    clients.value = clientsResponse
+    services.value = servicesResponse
+  } catch (error) {
+    toast.error(error.message || 'Error loading data')
+  }
+})
 </script>
