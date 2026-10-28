@@ -83,92 +83,90 @@
   </main>
 </template>
 
-<script>
+<script setup>
+// MIGRATION (Sprint 2): Converted from Options API (data/mounted/methods) to Composition API <script setup>
+import { ref, onMounted } from 'vue'
 import { getEvents, searchEvents } from '../api/api'
 import { useToast } from 'vue-toastification'
 
-//Notifications
+// Notifications
 const toast = useToast()
 
-export default {
-  data() {
-    return {
-      //variable to hold all events for the organization
-      events: null,
-      // Parameters for search to occur
-      searchBy: null,
-      name: null,
-      eventDate: null,
-      // variable stores the ID of the row that the mouse is currently hovering over (to highlight the row red)
-      hoverId: null,
-    }
-  },
-  mounted() {
-    // when component is mounted, load the data
-    this.loadData();
-  },
-  methods: {
-    // method called when component is mounted
-    async loadData() {
-      // Resets variables used for search
-      this.searchBy = null
-      this.name = null
-      this.eventDate = null
+// MIGRATION: data() -> individual ref() variables
+// variable to hold all events for the organization
+const events = ref(null)
+// Parameters for search to occur
+const searchBy = ref(null)
+const name = ref(null)
+const eventDate = ref(null)
+// variable stores the ID of the row that the mouse is currently hovering over (to highlight the row red)
+const hoverId = ref(null)
 
-      // show loading wheel
-      this.isLoading = true;
-      // get list of events
-      try {
-        const response = await getEvents();
-        this.events = response;
-      } catch (error) {
-        toast.error(error.message || 'loadData error')
-      }
-    },
+// MIGRATION: methods: { loadData } -> plain async function; this.x -> x.value
+// Loads all events and resets the search form (also used by Clear Search)
+// MIGRATION: removed "this.isLoading = true" - isLoading was never declared in data() or used in the template
+async function loadData() {
+  // Resets variables used for search
+  searchBy.value = null
+  name.value = null
+  eventDate.value = null
 
-    // method called when user searches for an event
-    async handleSubmitForm() {
-      // if user searches by event name
-      if (this.searchBy === 'Event Name') {
-        if (this.name) {
-          try {
-            const query = {
-              searchBy: 'name',
-              name: this.name
-            };
-            const response = await searchEvents(query);
-            this.events = response;
-          } catch (error) {
-            toast.error(error.message || 'Error searching events')
-          }
-        }
-        // if user searches by event date
-      } else if (this.searchBy === 'Event Date') {
-        if (this.eventDate) {
-          try {
-            const eventDate = new Date(this.eventDate);
-            const formattedDate = eventDate.toISOString().substring(0, 10);
-            const query = {
-              searchBy: 'date',
-              eventDate: formattedDate
-            };
-            const response = await searchEvents(query);
-            this.events = response;
-          } catch (error) {
-            toast.error(error.message || 'Error searching events:')
-          }
-        }
-      }
-    },
-
-    // method called for each event date so it will be formatted correctly on the table
-    formatDate(date) {
-      const isoDate = new Date(date);
-      const year = isoDate.getUTCFullYear();
-      const month = String(isoDate.getUTCMonth() + 1).padStart(2, '0');
-      const day = String(isoDate.getUTCDate()).padStart(2, '0');
-      return `${month}/${day}/${year}`;
-    },
-  },
+  // get list of events
+  try {
+    events.value = await getEvents()
+  } catch (error) {
+    toast.error(error.message || 'loadData error')
+  }
 }
+
+// MIGRATION: methods: { handleSubmitForm } -> plain async function
+// method called when user searches for an event
+async function handleSubmitForm() {
+  // if user searches by event name
+  if (searchBy.value === 'Event Name') {
+    if (name.value) {
+      try {
+        const query = {
+          searchBy: 'name',
+          name: name.value
+        }
+        events.value = await searchEvents(query)
+      } catch (error) {
+        toast.error(error.message || 'Error searching events')
+      }
+    }
+    // if user searches by event date
+  } else if (searchBy.value === 'Event Date') {
+    if (eventDate.value) {
+      try {
+        // MIGRATION: renamed local variable to selectedDate so it doesn't shadow the eventDate ref
+        const selectedDate = new Date(eventDate.value)
+        const formattedDate = selectedDate.toISOString().substring(0, 10)
+        const query = {
+          searchBy: 'date',
+          eventDate: formattedDate
+        }
+        events.value = await searchEvents(query)
+      } catch (error) {
+        toast.error(error.message || 'Error searching events')
+      }
+    }
+  }
+}
+
+// MIGRATION: methods: { formatDate } -> plain function (still callable from the template)
+// method called for each event date so it will be formatted correctly on the table
+function formatDate(date) {
+  const isoDate = new Date(date)
+  const year = isoDate.getUTCFullYear()
+  const month = String(isoDate.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(isoDate.getUTCDate()).padStart(2, '0')
+  return `${month}/${day}/${year}`
+}
+
+// MIGRATION: mounted() -> onMounted()
+// when component is mounted, load the data
+onMounted(() => {
+  loadData()
+})
 </script>
