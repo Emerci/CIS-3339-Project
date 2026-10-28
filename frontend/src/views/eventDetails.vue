@@ -271,7 +271,7 @@ export default {
      // this.inactiveServices = servicesResponse.filter(item => item.status === "Inactive")
 
     } catch (error) {
-      toast.error('error loading data', error)
+      toast.error(error.message || 'error loading data')
     }
   },
   methods: {
@@ -290,7 +290,7 @@ export default {
         toast.success(response)
         this.$router.push('/findevents')
       } catch (error) {
-        toast.error('error updating event', error)
+        toast.error(error.message || 'error updating event')
       }
     },
 
@@ -306,7 +306,7 @@ export default {
         toast.success(response)
         this.$router.push('/findevents')
       } catch (error) {
-        toast.error(error)
+        toast.error(error.message)
       }
     },
   }

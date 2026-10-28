@@ -66,9 +66,22 @@
         <h2 class="text-2xl font-bold">List of Clients</h2>
         <h3 class="italic">Click table row to view client details</h3>
       </div>
-      <!--Table showing list of Clients-->
+      <!--Table showing list of Clients (loading / error / empty / data states)-->
       <div class="flex flex-col col-span-2">
-        <table class="min-w-full shadow-md rounded">
+        <p v-if="loading" data-testid="clients-loading" class="p-4 text-gray-600 animate-pulse">
+          Loading clients...
+        </p>
+
+        <div v-else-if="error" data-testid="clients-error" class="p-4 rounded border border-red-700 bg-red-50">
+          <p class="text-red-700 font-semibold mb-3">{{ error }}</p>
+          <button class="bg-red-700 text-white rounded px-4 py-1" @click="execute()">Retry</button>
+        </div>
+
+        <p v-else-if="clients && clients.length === 0" data-testid="clients-empty" class="p-4 italic text-gray-600">
+          No clients match your search. Try different details or click Clear Search.
+        </p>
+
+        <table v-else-if="clients" class="min-w-full shadow-md rounded">
           <thead class="bg-gray-50 text-xl">
             <tr>
               <th class="p-4 text-left">Name</th>
@@ -77,7 +90,7 @@
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-300">
-            <tr @click="$router.push({ name: 'clientdetails', params: { id: client._id } })" v-for="client in clients"
+            <tr @click="router.push({ name: 'clientdetails', params: { id: client._id } })" v-for="client in clients"
               :key="client._id" class="cursor-pointer" :class="{ 'hoverRow': hoverId === client._id }"
               @mouseenter="hoverId = client._id" @mouseleave="hoverId = null">
               <td class="p-2 text-left">
@@ -95,81 +108,54 @@
   </main>
 </template>
 
-<script>
+<script setup>
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { getClients, searchClients } from '../api/api'
-import { useToast } from 'vue-toastification'
+import { useApi } from '../composables/useApi'
 
-//Notifications
-const toast = useToast()
+const router = useRouter()
 
-export default {
-  data() {
-    return {
-      //variable to store all clients and their information for the organization
-      clients: null,
-      // Parameters for search to occur
-      searchBy: '',
-      firstName: '',
-      lastName: '',
-      phoneNumber: '',
-      // variable stores the ID of the row that the mouse is currently hovering over (to highlight the row red)
-      hoverId: null,
+// Search form state
+const searchBy = ref('')
+const firstName = ref('')
+const lastName = ref('')
+const phoneNumber = ref('')
+// ID of the row the mouse is over (highlights the row red)
+const hoverId = ref(null)
+
+// null = show every client; otherwise the search being displayed.
+// Retry re-runs whichever of the two is currently active.
+const activeQuery = ref(null)
+const loadClients = () =>
+  activeQuery.value ? searchClients(activeQuery.value) : getClients()
+
+const { data: clients, loading, error, execute } = useApi(loadClients)
+
+onMounted(() => execute())
+
+// Clear Search: reset the form and reload the full list
+function loadData() {
+  searchBy.value = ''
+  firstName.value = ''
+  lastName.value = ''
+  phoneNumber.value = ''
+  activeQuery.value = null
+  execute()
+}
+
+// Search Client: build the query from the form, then run it
+function handleSubmitForm() {
+  if (searchBy.value === 'Client Name' && (firstName.value || lastName.value)) {
+    activeQuery.value = {
+      searchBy: 'name',
+      firstName: firstName.value,
+      lastName: lastName.value
     }
-  },
-  mounted() {
-    // when component is mounted, load the data -
-    this.loadData()
-  },
-  methods: {
-    // method called when component is mounted
-    async loadData() {
-      // Resets all the variables
-      this.searchBy = ''
-      this.firstName = ''
-      this.lastName = ''
-      this.phoneNumber = ''
-
-      // get list of clients
-      try {
-        const response = await getClients();
-        this.clients = response;
-      } catch (error) {
-        toast.error(error)
-      }
-    },
-    // method called when user searches for clients
-    async handleSubmitForm() {
-      // if user searched by client name
-      if (this.searchBy === 'Client Name') {
-        if (this.firstName || this.lastName) {
-          try {
-            const query = {
-              searchBy: 'name',
-              firstName: this.firstName,
-              lastName: this.lastName,
-            }
-            const response = await searchClients(query)
-            this.clients = response;
-          } catch (error) {
-            toast.error(error)
-          }
-        }
-        // if user searches by client phone number
-      } else if (this.searchBy === 'Client Number') {
-        if (this.phoneNumber) {
-          try {
-            const query = {
-              searchBy: 'number',
-              phoneNumber: this.phoneNumber
-            }
-            const response = await searchClients(query)
-            this.clients = response;
-          } catch (error) {
-            toast.error(error)
-          }
-        }
-      }
-    },
-  },
+    execute()
+  } else if (searchBy.value === 'Client Number' && phoneNumber.value) {
+    activeQuery.value = { searchBy: 'number', phoneNumber: phoneNumber.value }
+    execute()
+  }
 }
 </script>

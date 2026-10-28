@@ -7,6 +7,8 @@ import Toast from "vue-toastification";
 import "vue-toastification/dist/index.css";
 //state management library
 import { createPinia } from 'pinia'
+import { setUnauthorizedHandler } from './api/api'
+import { useLoggedInUserStore } from './store/loggedInUser'
 
 const app = createApp(App);
 
@@ -20,6 +22,9 @@ pinia.use(({ store }) => {
 //add pinia object to our instance
 app.use(pinia)
 app.use(router);
+
+// On any 401 the interceptor clears the token; this clears Pinia and goes to /login
+setUnauthorizedHandler(() => useLoggedInUserStore().expireSession());
 
 const options = {
   position: 'bottom-right'

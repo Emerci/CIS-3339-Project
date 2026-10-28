@@ -120,7 +120,7 @@ export default {
         this.$store.dispatch('clearSessionData');
         this.$router.push('/')
       } catch (error) {
-        toast.error('logout error', error)
+        toast.error(error.message || 'logout error')
       }
     },
   }

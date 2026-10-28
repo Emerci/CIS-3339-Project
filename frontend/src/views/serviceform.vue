@@ -126,7 +126,7 @@ export default {
                 toast.success(response)
                 this.$router.push('/findservice')
             } catch (error) {
-                toast.error('Error creating new service:', error)
+                toast.error(error.message || 'Error creating new service:')
             }
         },
     }
