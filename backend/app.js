@@ -46,16 +46,26 @@ app.use('/org', require('./routes/org'));
 app.use('/services', require('./routes/services'));
 app.use('/users', require('./routes/users'));
 
-app.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
+// Report whether the API is up and MongoDB is connected.
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    db: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+  });
 });
 
-// error handler
-app.use(function (err, req, res, next) {
-  // logs error and error code to console
-  console.error(err.message, req);
-  if (!err.statusCode) {
-    err.statusCode = 500;
-  }
-  res.status(err.statusCode).send(err.message);
+// Keep unknown routes in the same JSON format as other API errors.
+app.use((req, res) => {
+  res.status(404).json({ error: 'Not found' });
+});
+
+// Hide internal server details while preserving safe client error messages.
+app.use((err, req, res, next) => {
+  const status = err.statusCode || err.status || 500;
+  const message = status >= 500 ? 'Internal server error' : err.message;
+  res.status(status).json({ error: message || 'Request failed' });
+});
+
+app.listen(PORT, () => {
+  console.log(`Server listening on port ${PORT}`);
 });
