@@ -6,6 +6,8 @@ const router = express.Router();
 
 // Middleware for authorization. For API calls that require authorization, this middleware checks if the header of API calls have a valid security token. If no security token or invalid security token, then the API call is not made.
 const authMiddleWare = require('../auth/authMiddleWare');
+// Only editors can create, update or delete clients (viewers get 403)
+const requireEditor = require('../auth/requireEditor');
 
 // importing data model schemas
 const { clients, events } = require('../models/models');
@@ -17,7 +19,7 @@ const org = process.env.ORG_ID;
 // API Endpoint to Get all clients
 router.get('/', authMiddleWare, async (req, res) => {
   try {
-    const cli = await clients.find({});
+    const cli = await clients.find({ orgs: org });
     res.json(cli);
   } catch (err) {
     res.status(500).send(err.message);
@@ -87,7 +89,7 @@ router.get('/search', authMiddleWare, (req, res, next) => {
 });
 
 // POST create new client
-router.post('/', authMiddleWare, (req, res, next) => {
+router.post('/', authMiddleWare, requireEditor, (req, res, next) => {
   const newClient = req.body;
   newClient.orgs = [org];
   clients.create(newClient, (error, data) => {
@@ -100,8 +102,11 @@ router.post('/', authMiddleWare, (req, res, next) => {
 });
 
 // API endpoint to PUT update client
-router.put("/update/:id", authMiddleWare, (req, res, next) => {
-  clients.findByIdAndUpdate(req.params.id, req.body, (error, data) => {
+router.put("/update/:id", authMiddleWare, requireEditor, (req, res, next) => {
+  // only update a client that belongs to this org, and don't let the request change the org
+  const updates = { ...req.body };
+  delete updates.orgs;
+  clients.findOneAndUpdate({ _id: req.params.id, orgs: org }, updates, (error, data) => {
     if (error) {
       return next(error);
     } else {
@@ -114,7 +119,7 @@ router.put("/update/:id", authMiddleWare, (req, res, next) => {
 });
 
 // API endpoint to hard delete client by ID, can be only be done if client is not signed up for events
-router.delete("/:id", authMiddleWare, (req, res, next) => {
+router.delete("/:id", authMiddleWare, requireEditor, (req, res, next) => {
   clients.findOne({ _id : req.params.id, orgs: org }, (error, data) => {
     if (error) {
       return next(error);
@@ -127,7 +132,7 @@ router.delete("/:id", authMiddleWare, (req, res, next) => {
         } else {
           // only delete event if no client is not signed up for any event
           if (data.length === 0)
-            clients.findByIdAndDelete(req.params.id, (error, data) => {
+            clients.findOneAndDelete({ _id: req.params.id, orgs: org }, (error, data) => {
               if (error) {
                 return next(error);
               } else if (!data) {
@@ -145,11 +150,13 @@ router.delete("/:id", authMiddleWare, (req, res, next) => {
 });
 
 // GET clients by zip code for dashboard
-router.get('/byzip', (req, res, next) => {
+router.get('/byzip', authMiddleWare, (req, res, next) => {
   clients.aggregate(
     [
       {
         $match: {
+          // aggregate() doesn't convert strings to ObjectIds, so convert the org id here
+          orgs: new ObjectId(org),
           "address.zip": { $exists: true, $ne: "" }
         }
       },
