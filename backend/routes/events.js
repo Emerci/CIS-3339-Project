@@ -1,254 +1,216 @@
 // This file contains API endpoints for interacting with the "events" collection in the MongoDB database
-const express = require("express");
+const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 
-const org = process.env.ORG_ID;
+// Any logged-in user can read. Only editors can create, update, delete, register or deregister.
+// The organization always comes from the JWT (req.user.orgId) through withOrg, never from the request.
+const authMiddleWare = require('../auth/authMiddleWare');
+const requireEditor = require('../auth/requireEditor');
+const withOrg = require('../auth/withOrg');
 
-// Middleware for authorization. For API calls that require authorization, this middleware checks if the header of API calls have a valid security token. If no security token or invalid security token, then the API call is not made.
-const authMiddleWare = require("../auth/authMiddleWare");
+const { events, clients } = require('../models/models');
 
-// importing data model schemas
-const { events, clients } = require("../models/models");
+// escape user input before it goes into a regular expression
+const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-// API endpoint to get all events for org
-router.get("/", authMiddleWare, (req, res, next) => {
-  events
-    .find({ org: org }, (error, data) => {
-      if (error) {
-        return next(error);
-      } else {
-        return res.json(data);
-      }
-    })
-    // sort by date descending
-    .sort({ date: -1 });
-});
-
-// API endpoint to GET single event by ID
-router.get("/id/:id", authMiddleWare, (req, res, next) => {
-  events.findOne({ _id: req.params.id, org: org }, (error, data) => {
-    if (error) {
-      return next(error);
-    } else if (!data) {
-      res.status(400).send("Event not found");
-    } else {
-      res.json(data);
-    }
-  });
-});
-
-// API endpoint to GET events based on search query
-// Ex: '...?name=Food&searchBy=name'
-router.get("/search/", authMiddleWare, (req, res, next) => {
-  const dbQuery = { org: org };
-  switch (req.query.searchBy) {
-    case "name":
-      dbQuery.name = { $regex: `${req.query.name}`, $options: "i" };
-      break;
-    case "date":
-      dbQuery.date = req.query.eventDate;
-      break;
-    default:
-      return res.status(400).send("invalid searchBy");
+// GET all events for the org, newest first
+router.get('/', authMiddleWare, async (req, res, next) => {
+  try {
+    res.json(await events.find(withOrg({}, req)).sort({ date: -1 }));
+  } catch (err) {
+    next(err);
   }
-  events.find(dbQuery, (error, data) => {
-    if (error) {
-      return next(error);
-    } else {
-      res.json(data);
-    }
-  });
 });
 
-// API endpoint to GET events for which a client is signed up
-router.get("/client/:id", authMiddleWare, (req, res, next) => {
-  events.find({ attendees: req.params.id, org: org }, (error, data) => {
-    if (error) {
-      return next(error);
-    } else {
-      res.json(data);
-    }
-  });
-});
-
-// API endpoint to GET events for which a client is not signed up
-router.get(
-  "/client/:id/not-registered",
-  authMiddleWare,
-  async (req, res, next) => {
-    try {
-      const eventsNotRegistered = await events.find({
-        attendees: { $nin: [req.params.id] },
-        org: org,
-      });
-      res.json(eventsNotRegistered);
-    } catch (error) {
-      next(error);
-    }
+// GET single event by ID
+router.get('/id/:id', authMiddleWare, async (req, res, next) => {
+  try {
+    const event = await events.findOne(withOrg({ _id: req.params.id }, req));
+    if (!event) return res.status(404).json({ error: 'Event not found' });
+    res.json(event);
+  } catch (err) {
+    next(err);
   }
-);
-
-// API endpoint to GET attendee details for an event
-router.get("/attendees/:id", authMiddleWare, (req, res, next) => {
-  events.findById(req.params.id, (error, event) => {
-    if (error) {
-      return next(error);
-    } else {
-      if (!event)
-        res.status(400).send("Event not found")
-      else {
-        const attendeeIds = event.attendees.map((attendee) =>
-          attendee.toString()
-        );
-        clients.find({ _id: { $in: attendeeIds } }, (error, clients) => {
-          if (error) {
-            return next(error);
-          } else {
-            res.json(clients);
-          }
-        });
-      }
-    };
-  });
 });
 
-// API endpoint to GET all events for a given service
-router.get("/service/:id", authMiddleWare, async (req, res, next) => {
+// GET events based on search query. Ex: '...?name=Food&searchBy=name'
+router.get('/search/', authMiddleWare, async (req, res, next) => {
+  try {
+    const dbQuery = withOrg({}, req);
+    switch (req.query.searchBy) {
+      case 'name':
+        if (req.query.name) {
+          dbQuery.name = { $regex: escapeRegex(req.query.name), $options: 'i' };
+        }
+        break;
+      case 'date':
+        if (req.query.eventDate) dbQuery.date = req.query.eventDate;
+        break;
+      default:
+        return res.status(400).json({ error: 'Invalid searchBy' });
+    }
+    res.json(await events.find(dbQuery));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET events for which a client is signed up
+router.get('/client/:id', authMiddleWare, async (req, res, next) => {
+  try {
+    res.json(await events.find(withOrg({ attendees: req.params.id }, req)));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET events for which a client is not signed up
+router.get('/client/:id/not-registered', authMiddleWare, async (req, res, next) => {
+  try {
+    res.json(await events.find(withOrg({ attendees: { $nin: [req.params.id] } }, req)));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET attendee details for an event (event AND clients must belong to this org)
+router.get('/attendees/:id', authMiddleWare, async (req, res, next) => {
+  try {
+    const event = await events.findOne(withOrg({ _id: req.params.id }, req));
+    if (!event) return res.status(404).json({ error: 'Event not found' });
+    res.json(await clients.find(withOrg({ _id: { $in: event.attendees } }, req, 'orgs')));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET all events for a given service
+router.get('/service/:id', authMiddleWare, async (req, res, next) => {
   try {
     const eventsWithService = await events
-      .find({ services: { $in: [req.params.id] }, org: org })
+      .find(withOrg({ services: { $in: [req.params.id] } }, req))
       .select({ _id: 1, name: 1, date: 1, address: { line1: 1 } })
       .lean();
     res.json(eventsWithService);
-  } catch (error) {
-    next(error);
+  } catch (err) {
+    next(err);
   }
 });
 
-// API endpoint to POST new event
-router.post("/", authMiddleWare, (req, res, next) => {
-  const newEvent = req.body;
-  newEvent.org = org;
-  events.create(newEvent, (error, data) => {
-    if (error) {
-      return next(error);
-    } else {
-      res.status(200).send("New event created successfully");
-    }
-  });
+// POST new event (editor only)
+router.post('/', authMiddleWare, requireEditor, async (req, res, next) => {
+  try {
+    // org comes from the token; attendees are only changed through register/deregister
+    const { _id, org, attendees, ...body } = req.body;
+    await events.create({ ...body, org: req.user.orgId });
+    res.status(200).send('New event created successfully');
+  } catch (err) {
+    next(err);
+  }
 });
 
-// API endpoint to PUT -> update event
-router.put("/update/:id", authMiddleWare, (req, res, next) => {
-  events.findOneAndUpdate(
-    { _id: req.params.id, org: org },
-    req.body,
-    (error, data) => {
-      if (error) {
-        return next(error);
-      } else {
-        res.status(200).send("Event updated successfully");
-      }
-    }
-  );
+// PUT update event (editor only)
+router.put('/update/:id', authMiddleWare, requireEditor, async (req, res, next) => {
+  try {
+    // the request can't change the id, the owning org, or the attendee list
+    const { _id, org, attendees, ...updates } = req.body;
+    const event = await events.findOneAndUpdate(
+      withOrg({ _id: req.params.id }, req),
+      updates,
+      { new: true, runValidators: true }
+    );
+    if (!event) return res.status(404).json({ error: 'Event not found' });
+    res.status(200).send('Event updated successfully');
+  } catch (err) {
+    next(err);
+  }
 });
 
-// API endpoint to PUT -> add attendee to event
-router.put("/register", authMiddleWare, (req, res, next) => {
-  events.find(
-    { _id: req.query.event, attendees: req.query.client, org: org },
-    (error, data) => {
-      if (error) {
-        return next(error);
-      } else {
-        // only add attendee if not yet signed up
-        if (!data.length) {
-          events.findByIdAndUpdate(
-            req.query.event,
-            { $push: { attendees: req.query.client } },
-            (error, data) => {
-              if (error) {
-                return next(error);
-              } else {
-                res.status(200).send("Client added to event");
-              }
-            }
-          );
-        } else {
-          res.status(400).send("Client already added to event");
-        }
-      }
+// B1: PUT register a client for an event. Ex: '/register?event=<id>&client=<id>' (editor only)
+router.put('/register', authMiddleWare, requireEditor, async (req, res, next) => {
+  try {
+    const { event: eventId, client: clientId } = req.query;
+    if (!eventId || !clientId) {
+      return res.status(400).json({ error: 'event and client are required' });
     }
-  );
+
+    // both must exist AND belong to the logged-in user's org, otherwise 404
+    const [eventExists, clientExists] = await Promise.all([
+      events.exists(withOrg({ _id: eventId }, req)),
+      clients.exists(withOrg({ _id: clientId }, req, 'orgs'))
+    ]);
+    if (!eventExists || !clientExists) {
+      return res.status(404).json({ error: 'Client or event not found' });
+    }
+
+    // atomic: only matches if the client is NOT already an attendee, so no duplicates are possible
+    const updated = await events.findOneAndUpdate(
+      withOrg({ _id: eventId, attendees: { $ne: clientId } }, req),
+      { $addToSet: { attendees: clientId } },
+      { new: true }
+    );
+    if (!updated) return res.status(200).json({ message: 'Already registered' });
+    res.status(200).json(updated);
+  } catch (err) {
+    next(err);
+  }
 });
 
-// API endpoint to PUT -> remove attendee from event
-router.put("/deregister", authMiddleWare, (req, res, next) => {
-  events.findByIdAndUpdate(
-    req.query.event,
-    { $pull: { attendees: req.query.client } },
-    (error, data) => {
-      if (error) {
-        return next(error);
-      } else {
-        clients.findByIdAndUpdate(
-          req.query.client,
-          { $pull: { events: req.query.event } },
-          (error, data) => {
-            if (error) {
-              return next(error);
-            } else {
-              res.send("Client deregistered with event");
-            }
-          }
-        );
-      }
+// B1: PUT remove a client from an event. Ex: '/deregister?event=<id>&client=<id>' (editor only)
+router.put('/deregister', authMiddleWare, requireEditor, async (req, res, next) => {
+  try {
+    const { event: eventId, client: clientId } = req.query;
+    if (!eventId || !clientId) {
+      return res.status(400).json({ error: 'event and client are required' });
     }
-  );
+
+    const [eventExists, clientExists] = await Promise.all([
+      events.exists(withOrg({ _id: eventId }, req)),
+      clients.exists(withOrg({ _id: clientId }, req, 'orgs'))
+    ]);
+    if (!eventExists || !clientExists) {
+      return res.status(404).json({ error: 'Client or event not found' });
+    }
+
+    // only matches if the client IS currently an attendee
+    const updated = await events.findOneAndUpdate(
+      withOrg({ _id: eventId, attendees: clientId }, req),
+      { $pull: { attendees: clientId } },
+      { new: true }
+    );
+    if (!updated) return res.status(200).json({ message: 'Not registered' });
+    res.status(200).json(updated);
+  } catch (err) {
+    next(err);
+  }
 });
 
-// API endpoint to hard DELETE event by ID
-router.delete("/:id", authMiddleWare, (req, res, next) => {
-  events.findOne({ _id: req.params.id, org: org }, (error, data) => {
-    if (error) {
-      return next(error);
-    } else if (!data) {
-      res.status(400).send("Event not found");
-    } else {
-      // only delete event if no clients are signed up
-      if (data.attendees.length === 0) {
-        events.findOneAndDelete(
-          { _id: req.params.id, org: org },
-          (error, data) => {
-            if (error) {
-              return next(error);
-            } else if (!data) {
-              res.status(400).send("Event not found");
-            } else {
-              res.status(200).send("Event deleted successfully");
-            }
-          }
-        );
-      } else {
-        res.status(400).send("Event has attendees and can't be deleted.");
-      }
+// DELETE event by ID (editor only), only if no clients are signed up
+router.delete('/:id', authMiddleWare, requireEditor, async (req, res, next) => {
+  try {
+    const filter = withOrg({ _id: req.params.id }, req);
+    const event = await events.findOne(filter);
+    if (!event) return res.status(404).json({ error: 'Event not found' });
+    if (event.attendees.length > 0) {
+      return res.status(400).json({ error: "Event has attendees and can't be deleted." });
     }
-  });
+    await events.deleteOne(filter);
+    res.status(200).send('Event deleted successfully');
+  } catch (err) {
+    next(err);
+  }
 });
 
-// GET event attendance for the past two months for dashboard
-router.get("/attendance", (req, res, next) => {
-  const twoMonthsAgo = new Date();
-  twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
-  events
-    .find({ org: org, date: { $gte: twoMonthsAgo } }, (error, data) => {
-      if (error) {
-        return next(error);
-      } else {
-        res.json(data);
-      }
-    })
-    .sort({ date: 1 });
+// GET event attendance for the past two months for the dashboard
+router.get('/attendance', authMiddleWare, async (req, res, next) => {
+  try {
+    const twoMonthsAgo = new Date();
+    twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
+    res.json(await events.find(withOrg({ date: { $gte: twoMonthsAgo } }, req)).sort({ date: 1 }));
+  } catch (err) {
+    next(err);
+  }
 });
 
 module.exports = router;
