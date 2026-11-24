@@ -95,6 +95,14 @@ Open http://localhost:5173 in your browser.
 
 Passwords are stored hashed with bcrypt.
 
+### How access is enforced (backend)
+
+- Every client, event, and service route requires a valid login token (otherwise **401**).
+- Create, update, delete, register, and deregister also require the **editor** role (`backend/auth/requireEditor.js`). A viewer calling them directly gets **403**, even outside the UI.
+- Every database query is limited to the logged-in user's organization (`backend/auth/withOrg.js`), so one org can't see another org's data.
+- A failed login always returns the same message ("Invalid username or password").
+- `GET /health` returns `{ "status": "ok", "db": "connected" }` with no login, to check the server is up.
+
 ---
 
 ## 6. Production build and deployment
@@ -124,14 +132,20 @@ Integration test we run after setup:
 1. Start backend and frontend, confirm `Database connection Success!`.
 2. Log in as `admin` → create a client, an event, and a service; register the client for the event; edit and delete a record.
 3. Log out, log in as `user` → confirm lists and search work and that add/edit/delete options are not shown.
-4. Run `npm run build` and `npm run serve` and repeat a login to confirm the production build works.
+4. As `user`, call a write endpoint directly and confirm it's blocked:
+   ```
+   TOKEN=$(curl -s -X POST localhost:3000/users/login -H "Content-Type: application/json" -d '{"username":"user","password":"user"}' | sed -E 's/.*"token":"([^"]+)".*/\1/')
+   curl -i -X POST localhost:3000/clients -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{}'
+   ```
+   Expected: `HTTP/1.1 403 Forbidden`.
+5. Run `npm run build` and `npm run serve` and repeat a login to confirm the production build works.
 
 ---
 
 ## 8. Known limitations
 
-- The **Description** field on the Create Event form is not saved.
-- Role checks are enforced in the frontend; backend role checks are still being added.
+- Refreshing the browser logs you out; you have to log in again.
+- CORS currently allows any origin (`*`). For a real deployment it should be limited to the frontend URL in `CORS_ORIGIN`.
 
 ---
 
@@ -142,7 +156,7 @@ backend/
   app.js              Express app, routes, error handler
   routes/             clients, events, services, org, users (login)
   models/models.js    Mongoose schemas
-  auth/               JWT middleware
+  auth/               authMiddleWare (login check), requireEditor (role check), withOrg (org filter)
   seed-local.js       creates the org and demo accounts
 frontend/
   src/views/          pages (clients, events, services, login, dashboard)
