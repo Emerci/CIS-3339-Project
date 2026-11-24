@@ -21,6 +21,11 @@ pinia.use(({ store }) => {
 
 //add pinia object to our instance
 app.use(pinia)
+
+// F4: restore a saved login BEFORE the router starts, so refreshing a protected page
+// does not bounce a logged-in user to /login
+useLoggedInUserStore().restoreSession()
+
 app.use(router);
 
 // On any 401 the interceptor clears the token; this clears Pinia and goes to /login
