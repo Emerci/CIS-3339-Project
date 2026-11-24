@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useLoggedInUserStore } from '../store/loggedInUser'
+import { useToast } from 'vue-toastification'
 
 // make all paths and names lowercase for consistency
 const routes = [
@@ -15,8 +16,8 @@ const routes = [
   {
     path: '/clientform',
     name: 'clientform',
-    // only authenticated users can create clients
-    meta: { requiresAuth: true },
+    // only editors can create records (viewers are redirected by the guard below)
+    meta: { requiresAuth: true, requiresEditor: true },
     component: () => import('../views/clientform.vue')
   },
   {
@@ -34,7 +35,8 @@ const routes = [
   {
     path: '/eventform',
     name: 'eventform',
-    meta: { requiresAuth: true },
+    // only editors can create records (viewers are redirected by the guard below)
+    meta: { requiresAuth: true, requiresEditor: true },
     component: () => import('../views/eventform.vue')
   },
   {
@@ -52,7 +54,8 @@ const routes = [
   {
     path: '/serviceform',
     name: 'serviceform',
-    meta: { requiresAuth: true },
+    // only editors can create records (viewers are redirected by the guard below)
+    meta: { requiresAuth: true, requiresEditor: true },
     component: () => import('../views/serviceform.vue')
   },
   {
@@ -73,15 +76,23 @@ const router = createRouter({
   routes
 })
 
-// protecting the routes
+// protecting the routes (one global guard)
 router.beforeEach((to) => {
   const store = useLoggedInUserStore()
+
+  // pages that need a login
   if (to.meta.requiresAuth && !store.isLoggedIn) {
     return {
       path: '/login',
       // save the location we were at to come back later
       query: { redirect: to.fullPath },
     }
+  }
+
+  // editor-only pages: a viewer who types the URL directly is sent home instead
+  if (to.meta.requiresEditor && store.role !== 'editor') {
+    useToast().error('You do not have permission to open that page.')
+    return { path: '/' }
   }
 })
 
