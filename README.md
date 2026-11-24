@@ -66,7 +66,7 @@ Use **two terminals**, one for the backend and one for the frontend.
 ```
 cd backend
 npm install
-node seed-local.js     # creates the organization and the two demo accounts (safe to run again)
+npm run db:init       # creates the org, demo accounts and sample data (safe to run again)
 npm start              # API runs at http://localhost:3000
 ```
 
@@ -157,8 +157,7 @@ backend/
   routes/             clients, events, services, org, users (login)
   models/models.js    Mongoose schemas
   auth/               authMiddleWare (login check), requireEditor (role check), withOrg (org filter)
-  seed-local.js       creates the org and demo accounts
-frontend/
+  scripts/dbInit.js     npm run db:init: creates the org, demo accounts, sample data
   src/views/          pages (clients, events, services, login, dashboard)
   src/components/     charts
   src/api/api.js      all API calls (Axios)
