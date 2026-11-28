@@ -204,7 +204,7 @@
               <td class="p-2 text-right">
                 <span class="remove-btn-wrapper">
                   <span class="remove-btn text-gray-400 cursor-pointer"
-                    @click.stop="removeClientFromEvent(client._id, event._id)" v-if="hoverId === event._id">X</span>
+                    @click.stop="removeClientFromEvent(client._id, event._id)" v-if="hoverId === event._id && user.role === 'editor'">X</span>
                 </span>
               </td>
             </tr>
@@ -217,6 +217,7 @@
         <VueMultiselect
           class="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 cursor-pointer"
           v-model="eventsSelected" :options="eventsFiltered" :custom-label="nameWithDate" :multiple="true"
+          :disabled="user.role !== 'editor'"
           :close-on-select="true" placeholder="Select Events to be added" label="date" track-by="name" />
         <div class="flex justify-between">
           <!--button to add client to events-->
